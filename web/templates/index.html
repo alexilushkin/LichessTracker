@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lichess Tournament Tracker</title>
+    <style>
+        :root {
+            --bg-color: #161512;
+            --card-bg: #262421;
+            --accent: #3692e7;
+            --accent-green: #629924;
+            --accent-orange: #dca029;
+            --accent-purple: #9b59b6;
+            --accent-gray: #7f8c8d;
+            --text-main: #bababa;
+            --text-heading: #ffffff;
+            --border: #3b3834;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1250px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        h1 {
+            color: var(--text-heading);
+            margin: 0;
+            font-size: 26px;
+        }
+
+        .analytics-bar {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 18px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .analytics-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-analytics {
+            background-color: #2c3e50;
+            border: 1px solid #34495e;
+            color: #ecf0f1;
+            padding: 7px 14px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-analytics:hover {
+            background-color: var(--accent);
+            border-color: var(--accent);
+            color: #fff;
+        }
+
+        .controls-section {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            margin-bottom: 25px;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .filter-label {
+            font-weight: bold;
+            font-size: 14px;
+            color: #ddd;
+            min-width: 80px;
+        }
+
+        .btn-filter {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+
+        .btn-filter.active, .btn-filter:hover {
+            background-color: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        .date-picker-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 5px 12px;
+            border-radius: 6px;
+        }
+
+        .date-picker-wrap input[type="date"] {
+            background: #1e1d1a;
+            border: 1px solid var(--border);
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 18px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            border-color: #555;
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .badge {
+            font-size: 11px;
+            text-transform: uppercase;
+            font-weight: bold;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .badge-live { background-color: var(--accent-orange); color: #000; }
+        .badge-upcoming { background-color: var(--accent-green); color: #fff; }
+        .badge-finished { background-color: var(--accent-gray); color: #fff; }
+
+        .format-badge {
+            background: #333;
+            color: #ddd;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            text-transform: capitalize;
+        }
+
+        .card-title {
+            color: var(--text-heading);
+            font-size: 17px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .meta {
+            font-size: 13px;
+            margin: 5px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .timer {
+            font-size: 14px;
+            font-weight: bold;
+            color: #58a6ff;
+            margin: 8px 0;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+        }
+
+        .btn-card {
+            flex: 1;
+            text-align: center;
+            padding: 7px 10px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: background-color 0.2s;
+        }
+
+        .btn-card-lichess { background-color: var(--accent); color: #fff; }
+        .btn-card-lichess:hover { background-color: #2b78c5; }
+
+        .btn-card-stats { background-color: #34495e; color: #ecf0f1; border: 1px solid #4a627a; }
+        .btn-card-stats:hover { background-color: var(--accent-purple); border-color: var(--accent-purple); color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>♟ Lichess Tournament Tracker</h1>
+            <div style="font-size: 13px; color: #888;">Мониторинг турниров и перенаправление в Streamlit</div>
+        </div>
+        <div id="tournaments-count" style="font-size: 14px; color: #aaa;">Загрузка...</div>
+    </header>
+
+    <div class="analytics-bar">
+        <span style="font-weight: bold; color: #fff;">📊 Дашборд аналитики (Streamlit):</span>
+        <div class="analytics-buttons">
+            <a href="http://localhost:8501/?view=all" target="_blank" class="btn-analytics">🌐 Вся база</a>
+            <a href="http://localhost:8501/?view=active_upcoming" target="_blank" class="btn-analytics">🔥 Текущие + Предстоящие</a>
+            <a id="link-stats-finished" href="http://localhost:8501/?view=finished" target="_blank" class="btn-analytics">🏆 Прошедшие за период</a>
+        </div>
+    </div>
+
+    <div class="controls-section">
+        <div class="controls-row">
+            <span class="filter-label">Статус:</span>
+            <button class="btn-filter active" onclick="setStatusFilter('active_upcoming')">Текущие + Предстоящие</button>
+            <button class="btn-filter" onclick="setStatusFilter('finished')">Прошедшие турниры</button>
+            <button class="btn-filter" onclick="setStatusFilter('all')">Все подряд</button>
+
+            <!-- Выбор даты для прошедших турниров -->
+            <div id="date-filter-box" class="date-picker-wrap" style="display: none;">
+                <label for="date-from" style="font-size: 13px; font-weight: 500;">Показать турниры с даты:</label>
+                <input type="date" id="date-from" onchange="onDateChanged()">
+            </div>
+        </div>
+
+        <div class="controls-row">
+            <span class="filter-label">Формат:</span>
+            <button class="btn-filter active" onclick="setSpeedFilter('all')">Все</button>
+            <button class="btn-filter" onclick="setSpeedFilter('bullet')">Пуля (Bullet)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('blitz')">Блиц (Blitz)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('rapid')">Рапид (Rapid)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('classical')">Классика</button>
+        </div>
+    </div>
+
+    <div class="grid" id="tournaments-grid"></div>
+</div>
+
+<script>
+    let currentStatusFilter = 'active_upcoming';
+    let currentSpeedFilter = 'all';
+    let tournamentsData = [];
+
+    // Устанавливаем дату по умолчанию (сегодня)
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('date-from').value = today;
+
+    function updateStreamlitLinks() {
+        const dateVal = document.getElementById('date-from').value;
+        const linkFinished = document.getElementById('link-stats-finished');
+        linkFinished.href = `http://localhost:8501/?view=finished&date_from=${dateVal}`;
+    }
+    updateStreamlitLinks();
+
+    async function setStatusFilter(status) {
+        currentStatusFilter = status;
+        const buttons = event.target.parentElement.querySelectorAll('.btn-filter');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        const dateBox = document.getElementById('date-filter-box');
+        if (status === 'finished' || status === 'all') {
+            dateBox.style.display = 'flex';
+        } else {
+            dateBox.style.display = 'none';
+        }
+
+        // Запрашиваем новые данные с сервера
+        await loadData();
+    }
+
+    function setSpeedFilter(speed) {
+        currentSpeedFilter = speed;
+        const buttons = event.target.parentElement.querySelectorAll('.btn-filter');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        renderTournaments();
+    }
+
+    async function onDateChanged() {
+        updateStreamlitLinks();
+        // При смене даты сразу же делаем запрос на бэкенд
+        await loadData();
+    }
+
+    function formatTimeRemaining(ms) {
+        if (ms <= 0) return "Начался!";
+        const totalMinutes = Math.floor(ms / (1000 * 60));
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        return hours > 0 ? `Старт через ${hours} ч ${minutes} мин` : `Старт через ${minutes} мин`;
+    }
+
+    function renderTournaments() {
+        const grid = document.getElementById('tournaments-grid');
+        grid.innerHTML = '';
+        const now = Date.now();
+
+        const filtered = tournamentsData.filter(t => {
+            if (currentSpeedFilter !== 'all' && t.format.toLowerCase() !== currentSpeedFilter) {
+                return false;
+            }
+            return true;
+        });
+
+        document.getElementById('tournaments-count').innerText = `Показано турниров: ${filtered.length}`;
+
+        if (filtered.length === 0) {
+            grid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: #777;">Турниров по заданным критериям не найдено.</div>';
+            return;
+        }
+
+        filtered.forEach(t => {
+            let statusBadge = '';
+            let timerText = '';
+
+            if (t.status === 'started') {
+                statusBadge = '<span class="badge badge-live">🔥 Идёт сейчас</span>';
+                if (t.finishes_at) {
+                    const leftMs = t.finishes_at - now;
+                    timerText = `Закончится через: ~${Math.max(0, Math.floor(leftMs / 60000))} мин`;
+                }
+            } else if (t.status === 'created') {
+                statusBadge = '<span class="badge badge-upcoming">⏱ Предстоящий</span>';
+                if (t.starts_at) {
+                    timerText = formatTimeRemaining(t.starts_at - now);
+                }
+            } else {
+                statusBadge = '<span class="badge badge-finished">🏁 Завершён</span>';
+                if (t.finishes_at) {
+                    const d = new Date(t.finishes_at);
+                    const dateFormatted = d.toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', year: 'numeric'});
+                    const timeFormatted = d.toLocaleTimeString('ru-RU', {hour: '2-digit', minute:'2-digit'});
+                    timerText = `Завершился: ${dateFormatted} в ${timeFormatted}`;
+                }
+            }
+
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.innerHTML = `
+                <div>
+                    <div class="card-header">
+                        <span class="format-badge">⚡ ${t.format}</span>
+                        ${statusBadge}
+                    </div>
+                    <div class="card-title">${t.name}</div>
+                    <div class="meta">
+                        <span>Игроков: <b>${t.nb_players}</b></span>
+                        ${t.clock ? `<span>Контроль: <b>${t.clock.limit / 60}+${t.clock.increment}</b></span>` : ''}
+                    </div>
+                    <div class="timer">${timerText}</div>
+                </div>
+                <div class="card-actions">
+                    <a href="${t.url}" target="_blank" class="btn-card btn-card-lichess">Lichess</a>
+                    <a href="http://localhost:8501/?tournament_id=${t.id}" target="_blank" class="btn-card btn-card-stats">📊 Статистика</a>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+    }
+
+    async function loadData() {
+        try {
+            document.getElementById('tournaments-count').innerText = "Загрузка данных с сервера...";
+            const dateVal = document.getElementById('date-from').value;
+            const res = await fetch(`/api/tournaments?status=${currentStatusFilter}&date_from=${dateVal}`);
+            const data = await res.json();
+            tournamentsData = data.tournaments;
+            renderTournaments();
+        } catch (err) {
+            console.error("Ошибка загрузки данных:", err);
+        }
+    }
+
+    // Первый запуск
+    loadData();
+    // Периодическое фоновое обновление
+    setInterval(loadData, 30000);
+    setInterval(renderTournaments, 10000);
+</script>
+
+</body>
+</html>

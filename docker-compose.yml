@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # 1. Брокер сообщений
+  redis:
+    image: redis:7-alpine
+    container_name: chess_redis
+    restart: unless-stopped
+    networks:
+      - chess-net
+
+  # 2. База данных с сохранением данных на диск хоста
+  mongodb:
+    image: mongo:7.0
+    container_name: chess_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - chess-net
+
+  # 3. Фоновый сборщик данных с Lichess
+  poller:
+    build: ./poller
+    container_name: chess_poller
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - chess-net
+
+  # 4. Основной веб-сервер (FastAPI)
+  web:
+    build: ./web
+    container_name: chess_web
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    depends_on:
+      - redis
+      - mongodb
+    networks:
+      - chess-net
+
+  # 5. Аналитический дашборд (Streamlit)
+  dashboard:
+    build: ./dashboard
+    container_name: chess_dashboard
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${DASHBOARD_PORT:-8501}:8501"
+    depends_on:
+      - mongodb
+    networks:
+      - chess-net
+
+volumes:
+  mongo_data:
+    driver: local
+
+networks:
+  chess-net:
+    driver: bridge
