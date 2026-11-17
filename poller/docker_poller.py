@@ -39,6 +39,9 @@ def parse_and_normalize(raw_tourn: dict, status: str) -> dict:
         "finishes_at": raw_tourn.get("finishesAt"),
         "url": f"https://lichess.org/tournament/{raw_tourn.get('id')}",
         "clock": raw_tourn.get("clock", {}),
+        # новые поля для фильтра по уровню:
+        "minRating": raw_tourn.get("minRating"),
+        "maxRating": raw_tourn.get("maxRating"),
     }
 
 

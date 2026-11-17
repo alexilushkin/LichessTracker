@@ -281,6 +281,16 @@
             <button class="btn-filter" onclick="setSpeedFilter('rapid')">Рапид (Rapid)</button>
             <button class="btn-filter" onclick="setSpeedFilter('classical')">Классика</button>
         </div>
+
+        <div class="controls-row">
+            <span class="filter-label">Уровень:</span>
+            <button class="btn-filter active" onclick="setRatingFilter('all')">Все</button>
+            <button class="btn-filter" onclick="setRatingFilter('up_to_1300')">До 1300</button>
+            <button class="btn-filter" onclick="setRatingFilter('up_to_1500')">До 1500</button>
+            <button class="btn-filter" onclick="setRatingFilter('up_to_1700')">До 1700</button>
+            <button class="btn-filter" onclick="setRatingFilter('up_to_2000')">До 2000</button>
+            <button class="btn-filter" onclick="setRatingFilter('above_2000')">Остальные (2000+)</button>
+        </div>
     </div>
 
     <div class="grid" id="tournaments-grid"></div>
@@ -289,6 +299,7 @@
 <script>
     let currentStatusFilter = 'active_upcoming';
     let currentSpeedFilter = 'all';
+    let currentRatingFilter = 'all';
     let tournamentsData = [];
 
     // Устанавливаем дату по умолчанию (сегодня)
@@ -325,6 +336,15 @@
         buttons.forEach(btn => btn.classList.remove('active'));
         event.target.classList.add('active');
         renderTournaments();
+    }
+
+    async function setRatingFilter(level) {
+        currentRatingFilter = level;
+        const buttons = event.target.parentElement.querySelectorAll('.btn-filter');
+        buttons.forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+        // Фильтр по уровню — серверный, поэтому перезапрашиваем данные
+        await loadData();
     }
 
     async function onDateChanged() {
@@ -413,7 +433,8 @@
         try {
             document.getElementById('tournaments-count').innerText = "Загрузка данных с сервера...";
             const dateVal = document.getElementById('date-from').value;
-            const res = await fetch(`/api/tournaments?status=${currentStatusFilter}&date_from=${dateVal}`);
+            const ratingParam = currentRatingFilter !== 'all' ? `&rating_level=${currentRatingFilter}` : '';
+            const res = await fetch(`/api/tournaments?status=${currentStatusFilter}&date_from=${dateVal}${ratingParam}`);
             const data = await res.json();
             tournamentsData = data.tournaments;
             renderTournaments();

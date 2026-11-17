@@ -34,6 +34,30 @@ mongo_client = MongoClient(host=MONGO_HOST, port=MONGO_PORT)
 db = mongo_client[MONGO_DB]
 tournaments_col = db[MONGO_COLLECTION]
 
+RATING_LEVELS = {
+    "up_to_1300": 1300,
+    "up_to_1500": 1500,
+    "up_to_1700": 1700,
+    "up_to_2000": 2000,
+    "above_2000": None,
+}
+
+def build_rating_query(level: str | None):
+    if not level or level not in RATING_LEVELS:
+        return {}
+    limit = RATING_LEVELS[level]
+    if limit is None:
+        # «Остальные»: открытые (без ограничения по рейтингу) турниры (maxRating = null) и с ограничением > 2000
+        return {"$or": [
+            {"maxRating": None},
+            {"maxRating.rating": {"$gt": 2000}},
+        ]}
+    # До N: либо ограничение <= N, либо открытый турнир (maxRating = null)
+    return {"$or": [
+        {"maxRating": None},
+        {"maxRating.rating": {"$lte": limit}},
+    ]}
+
 def consume_redis_queue():
     """Фоновый воркер: читает турниры из Redis и сохраняет их в MongoDB."""
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
@@ -72,7 +96,8 @@ async def index(request: Request):
 @app.get("/api/tournaments")
 async def get_tournaments(
     status: str = Query("active_upcoming"),
-    date_from: str | None = Query(None)
+    date_from: str | None = Query(None),
+    rating_level: str | None = Query(None),
 ):
     selected_ts = 0
     if date_from:
@@ -100,6 +125,15 @@ async def get_tournaments(
                 {"status": "finished", "finishes_at": {"$gte": selected_ts}},
                 {"status": "finished", "starts_at": {"$gte": selected_ts}}
             ]
+
+    # Применяем фильтр по уровню рейтинга
+    rating_q = build_rating_query(rating_level)
+    if rating_q:
+        # Если в query уже есть $or (от date_from) — объединяем через $and
+        if "$or" in query:
+            query = {"$and": [query, rating_q]}
+        else:
+            query.update(rating_q)
 
     cursor = tournaments_col.find(query, {"_id": 0}).sort("starts_at", -1)
     results = list(cursor)
