@@ -53,10 +53,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - WEB_API_URL=http://web:8000
     ports:
       - "${DASHBOARD_PORT:-8501}:8501"
     depends_on:
       - mongodb
+      - web
     networks:
       - chess-net
 
