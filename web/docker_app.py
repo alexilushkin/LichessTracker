@@ -34,6 +34,7 @@ mongo_client = MongoClient(host=MONGO_HOST, port=MONGO_PORT)
 db = mongo_client[MONGO_DB]
 tournaments_col = db[MONGO_COLLECTION]
 
+
 def consume_redis_queue():
     """Фоновый воркер: читает турниры из Redis и сохраняет их в MongoDB."""
     r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
@@ -53,13 +54,16 @@ def consume_redis_queue():
             logging.error(f"Ошибка при обработке очереди Redis: {e}")
             time.sleep(3)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
     loop.run_in_executor(None, consume_redis_queue)
     yield
 
+
 app = FastAPI(title="Lichess Tournament Tracker", lifespan=lifespan)
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -69,10 +73,12 @@ async def index(request: Request):
         context={"tournaments": []}
     )
 
+
 @app.get("/api/tournaments")
 async def get_tournaments(
     status: str = Query("active_upcoming"),
-    date_from: str | None = Query(None)
+    date_from: str | None = Query(None),
+    levels: str | None = Query(None),
 ):
     selected_ts = 0
     if date_from:
@@ -82,25 +88,43 @@ async def get_tournaments(
         except ValueError:
             pass
 
-    # Формируем запрос к реальным данным MongoDB
-    query = {}
+    and_conditions = []
+
+    # Фильтр по статусу и дате
     if status == "active_upcoming":
-        query["status"] = {"$in": ["started", "created"]}
+        and_conditions.append({"status": {"$in": ["started", "created"]}})
     elif status == "finished":
-        query["status"] = "finished"
+        and_conditions.append({"status": "finished"})
         if selected_ts > 0:
-            query["$or"] = [
-                {"finishes_at": {"$gte": selected_ts}},
-                {"starts_at": {"$gte": selected_ts}}
-            ]
+            and_conditions.append({
+                "$or": [
+                    {"finishes_at": {"$gte": selected_ts}},
+                    {"starts_at": {"$gte": selected_ts}}
+                ]
+            })
     else:  # all
         if selected_ts > 0:
-            query["$or"] = [
-                {"status": {"$in": ["started", "created"]}},
-                {"status": "finished", "finishes_at": {"$gte": selected_ts}},
-                {"status": "finished", "starts_at": {"$gte": selected_ts}}
-            ]
+            and_conditions.append({
+                "$or": [
+                    {"status": {"$in": ["started", "created"]}},
+                    {"status": "finished", "finishes_at": {"$gte": selected_ts}},
+                    {"status": "finished", "starts_at": {"$gte": selected_ts}}
+                ]
+            })
 
+    # Фильтр по уровню (если передан)
+    if levels:
+        allowed_levels = [lvl.strip() for lvl in levels.split(",") if lvl.strip()]
+        if allowed_levels:
+            level_or = [{"rating_level": {"$in": allowed_levels}}]
+            if "other" in allowed_levels:
+                level_or.append({"rating_level": {"$exists": False}})
+            and_conditions.append({"$or": level_or})
+
+    query = {"$and": and_conditions} if and_conditions else {}
     cursor = tournaments_col.find(query, {"_id": 0}).sort("starts_at", -1)
-    results = list(cursor)
+    results = []
+    for doc in cursor:
+        doc.setdefault("rating_level", "other")
+        results.append(doc)
     return {"tournaments": results}

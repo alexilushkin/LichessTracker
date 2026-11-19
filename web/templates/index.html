@@ -171,6 +171,7 @@
             justify-content: space-between;
             align-items: flex-start;
             margin-bottom: 10px;
+            gap: 8px;
         }
 
         .badge {
@@ -179,6 +180,7 @@
             font-weight: bold;
             padding: 4px 8px;
             border-radius: 4px;
+            white-space: nowrap;
         }
 
         .badge-live { background-color: var(--accent-orange); color: #000; }
@@ -192,6 +194,15 @@
             border-radius: 4px;
             font-size: 12px;
             text-transform: capitalize;
+        }
+
+        .level-badge {
+            background: #2b333d;
+            color: #9ecbff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
         }
 
         .card-title {
@@ -253,8 +264,8 @@
     <div class="analytics-bar">
         <span style="font-weight: bold; color: #fff;">📊 Дашборд аналитики (Streamlit):</span>
         <div class="analytics-buttons">
-            <a href="http://localhost:8501/?view=all" target="_blank" class="btn-analytics">🌐 Вся база</a>
-            <a href="http://localhost:8501/?view=active_upcoming" target="_blank" class="btn-analytics">🔥 Текущие + Предстоящие</a>
+            <a id="link-stats-all" href="http://localhost:8501/?view=all" target="_blank" class="btn-analytics">🌐 Вся база</a>
+            <a id="link-stats-active" href="http://localhost:8501/?view=active_upcoming" target="_blank" class="btn-analytics">🔥 Текущие + Предстоящие</a>
             <a id="link-stats-finished" href="http://localhost:8501/?view=finished" target="_blank" class="btn-analytics">🏆 Прошедшие за период</a>
         </div>
     </div>
@@ -262,9 +273,9 @@
     <div class="controls-section">
         <div class="controls-row">
             <span class="filter-label">Статус:</span>
-            <button class="btn-filter active" onclick="setStatusFilter('active_upcoming')">Текущие + Предстоящие</button>
-            <button class="btn-filter" onclick="setStatusFilter('finished')">Прошедшие турниры</button>
-            <button class="btn-filter" onclick="setStatusFilter('all')">Все подряд</button>
+            <button class="btn-filter active" onclick="setStatusFilter('active_upcoming', this)">Текущие + Предстоящие</button>
+            <button class="btn-filter" onclick="setStatusFilter('finished', this)">Прошедшие турниры</button>
+            <button class="btn-filter" onclick="setStatusFilter('all', this)">Все подряд</button>
 
             <!-- Выбор даты для прошедших турниров -->
             <div id="date-filter-box" class="date-picker-wrap" style="display: none;">
@@ -275,11 +286,21 @@
 
         <div class="controls-row">
             <span class="filter-label">Формат:</span>
-            <button class="btn-filter active" onclick="setSpeedFilter('all')">Все</button>
-            <button class="btn-filter" onclick="setSpeedFilter('bullet')">Пуля (Bullet)</button>
-            <button class="btn-filter" onclick="setSpeedFilter('blitz')">Блиц (Blitz)</button>
-            <button class="btn-filter" onclick="setSpeedFilter('rapid')">Рапид (Rapid)</button>
-            <button class="btn-filter" onclick="setSpeedFilter('classical')">Классика</button>
+            <button class="btn-filter active" onclick="setSpeedFilter('all', this)">Все</button>
+            <button class="btn-filter" onclick="setSpeedFilter('bullet', this)">Пуля (Bullet)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('blitz', this)">Блиц (Blitz)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('rapid', this)">Рапид (Rapid)</button>
+            <button class="btn-filter" onclick="setSpeedFilter('classical', this)">Классика</button>
+        </div>
+
+        <div class="controls-row" id="level-filter-row">
+            <span class="filter-label">Уровень:</span>
+            <button id="level-btn-all" class="btn-filter active" onclick="toggleLevelFilter('all', this)">Все</button>
+            <button class="btn-filter" data-level="u1300" onclick="toggleLevelFilter('u1300', this)">До 1300</button>
+            <button class="btn-filter" data-level="u1500" onclick="toggleLevelFilter('u1500', this)">До 1500</button>
+            <button class="btn-filter" data-level="u1700" onclick="toggleLevelFilter('u1700', this)">До 1700</button>
+            <button class="btn-filter" data-level="u2000" onclick="toggleLevelFilter('u2000', this)">До 2000</button>
+            <button class="btn-filter" data-level="other" onclick="toggleLevelFilter('other', this)">Остальные</button>
         </div>
     </div>
 
@@ -289,6 +310,7 @@
 <script>
     let currentStatusFilter = 'active_upcoming';
     let currentSpeedFilter = 'all';
+    let selectedLevels = new Set(); // пусто = Все уровни
     let tournamentsData = [];
 
     // Устанавливаем дату по умолчанию (сегодня)
@@ -297,16 +319,24 @@
 
     function updateStreamlitLinks() {
         const dateVal = document.getElementById('date-from').value;
-        const linkFinished = document.getElementById('link-stats-finished');
-        linkFinished.href = `http://localhost:8501/?view=finished&date_from=${dateVal}`;
+        const levelsParam = selectedLevels.size > 0
+            ? `&levels=${encodeURIComponent(Array.from(selectedLevels).join(','))}`
+            : '';
+
+        document.getElementById('link-stats-all').href = `http://localhost:8501/?view=all${levelsParam}`;
+        document.getElementById('link-stats-active').href = `http://localhost:8501/?view=active_upcoming${levelsParam}`;
+        document.getElementById('link-stats-finished').href = `http://localhost:8501/?view=finished&date_from=${dateVal}${levelsParam}`;
     }
     updateStreamlitLinks();
 
-    async function setStatusFilter(status) {
+    async function setStatusFilter(status, btnEl) {
         currentStatusFilter = status;
-        const buttons = event.target.parentElement.querySelectorAll('.btn-filter');
-        buttons.forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        const targetBtn = btnEl || (typeof event !== 'undefined' ? event.target : null);
+        if (targetBtn) {
+            const buttons = targetBtn.parentElement.querySelectorAll('.btn-filter');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            targetBtn.classList.add('active');
+        }
 
         const dateBox = document.getElementById('date-filter-box');
         if (status === 'finished' || status === 'all') {
@@ -319,11 +349,44 @@
         await loadData();
     }
 
-    function setSpeedFilter(speed) {
+    function setSpeedFilter(speed, btnEl) {
         currentSpeedFilter = speed;
-        const buttons = event.target.parentElement.querySelectorAll('.btn-filter');
-        buttons.forEach(btn => btn.classList.remove('active'));
-        event.target.classList.add('active');
+        const targetBtn = btnEl || (typeof event !== 'undefined' ? event.target : null);
+        if (targetBtn) {
+            const buttons = targetBtn.parentElement.querySelectorAll('.btn-filter');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            targetBtn.classList.add('active');
+        }
+        renderTournaments();
+    }
+
+    function toggleLevelFilter(level, btnEl) {
+        const allBtn = document.getElementById('level-btn-all');
+        const levelButtons = document.querySelectorAll('#level-filter-row [data-level]');
+
+        if (level === 'all') {
+            selectedLevels.clear();
+            levelButtons.forEach(btn => btn.classList.remove('active'));
+            allBtn.classList.add('active');
+        } else {
+            allBtn.classList.remove('active');
+            if (selectedLevels.has(level)) {
+                selectedLevels.delete(level);
+                btnEl.classList.remove('active');
+            } else {
+                selectedLevels.add(level);
+                btnEl.classList.add('active');
+            }
+
+            // Если сняли последний фильтр или выбрали все 5 — возвращаемся в режим "Все"
+            if (selectedLevels.size === 0 || selectedLevels.size === levelButtons.length) {
+                selectedLevels.clear();
+                levelButtons.forEach(btn => btn.classList.remove('active'));
+                allBtn.classList.add('active');
+            }
+        }
+
+        updateStreamlitLinks();
         renderTournaments();
     }
 
@@ -341,6 +404,12 @@
         return hours > 0 ? `Старт через ${hours} ч ${minutes} мин` : `Старт через ${minutes} мин`;
     }
 
+    function getLevelLabel(t) {
+        if (t.max_rating) return `≤ ${t.max_rating}`;
+        if (t.min_rating) return `≥ ${t.min_rating}`;
+        return 'Открытый';
+    }
+
     function renderTournaments() {
         const grid = document.getElementById('tournaments-grid');
         grid.innerHTML = '';
@@ -348,6 +417,10 @@
 
         const filtered = tournamentsData.filter(t => {
             if (currentSpeedFilter !== 'all' && t.format.toLowerCase() !== currentSpeedFilter) {
+                return false;
+            }
+            const tLevel = t.rating_level || 'other';
+            if (selectedLevels.size > 0 && !selectedLevels.has(tLevel)) {
                 return false;
             }
             return true;
@@ -390,7 +463,10 @@
             card.innerHTML = `
                 <div>
                     <div class="card-header">
-                        <span class="format-badge">⚡ ${t.format}</span>
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            <span class="format-badge">⚡ ${t.format}</span>
+                            <span class="level-badge">🎯 ${getLevelLabel(t)}</span>
+                        </div>
                         ${statusBadge}
                     </div>
                     <div class="card-title">${t.name}</div>

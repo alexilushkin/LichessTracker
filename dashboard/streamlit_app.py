@@ -28,10 +28,64 @@ STATUS_GROUP_LABELS = {
     "created": "Будущие",
 }
 
+LEVEL_CODE_TO_LABEL = {
+    "u1300": "До 1300",
+    "u1500": "До 1500",
+    "u1700": "До 1700",
+    "u2000": "До 2000",
+    "other": "Остальные",
+}
+LEVEL_LABEL_TO_CODE = {v: k for k, v in LEVEL_CODE_TO_LABEL.items()}
+ALL_LEVEL_LABELS = list(LEVEL_CODE_TO_LABEL.values())
+
 
 # ==========================================
 # Вспомогательные функции для рейтингов и дат
 # ==========================================
+
+def extract_rating_value(val) -> int | None:
+    if isinstance(val, dict):
+        r = val.get("rating")
+        return int(r) if r is not None else None
+    if isinstance(val, (int, float)):
+        return int(val)
+    return None
+
+
+def extract_rating_limits(raw_tourn: dict) -> tuple[int | None, int | None]:
+    conditions = raw_tourn.get("conditions") or {}
+    max_rating = extract_rating_value(raw_tourn.get("maxRating"))
+    if max_rating is None:
+        max_rating = extract_rating_value(conditions.get("maxRating"))
+
+    min_rating = extract_rating_value(raw_tourn.get("minRating"))
+    if min_rating is None:
+        min_rating = extract_rating_value(conditions.get("minRating"))
+
+    return max_rating, min_rating
+
+
+def get_rating_level(max_rating: int | None) -> str:
+    if max_rating is None:
+        return "other"
+    if max_rating <= 1300:
+        return "u1300"
+    if max_rating <= 1500:
+        return "u1500"
+    if max_rating <= 1700:
+        return "u1700"
+    if max_rating <= 2000:
+        return "u2000"
+    return "other"
+
+
+def format_tournament_level(t: dict) -> str:
+    if t.get("max_rating"):
+        return f"≤ {t['max_rating']}"
+    if t.get("min_rating"):
+        return f"≥ {t['min_rating']}"
+    return "Открытый"
+
 
 def get_rating_bucket(rating) -> str:
     """Группирует рейтинг по категориям: < 900, 900-999, 1000-1099, 1100-1199 и т.д."""
@@ -124,6 +178,7 @@ def load_tournaments_list() -> tuple[list[dict], str]:
             tournaments = []
             for st_name in ("started", "created", "finished"):
                 for t in raw.get(st_name, []):
+                    max_rating, min_rating = extract_rating_limits(t)
                     tournaments.append({
                         "id": t.get("id"),
                         "name": t.get("fullName", "Без названия"),
@@ -134,6 +189,9 @@ def load_tournaments_list() -> tuple[list[dict], str]:
                         "finishes_at": t.get("finishesAt"),
                         "url": f"https://lichess.org/tournament/{t.get('id')}",
                         "clock": t.get("clock", {}),
+                        "max_rating": max_rating,
+                        "min_rating": min_rating,
+                        "rating_level": get_rating_level(max_rating),
                     })
             tournaments.sort(key=lambda x: x.get("starts_at") or 0, reverse=True)
             return tournaments, "Lichess API (напрямую)"
@@ -174,6 +232,8 @@ def fetch_single_tournament_meta(tournament_id: str) -> dict | None:
     if not finishes_at and starts_at and t.get("minutes"):
         finishes_at = starts_at + t["minutes"] * 60 * 1000
 
+    max_rating, min_rating = extract_rating_limits(t)
+
     return {
         "id": t.get("id"),
         "name": t.get("fullName", tournament_id),
@@ -184,6 +244,9 @@ def fetch_single_tournament_meta(tournament_id: str) -> dict | None:
         "finishes_at": finishes_at,
         "url": f"https://lichess.org/tournament/{t.get('id')}",
         "clock": t.get("clock", {}),
+        "max_rating": max_rating,
+        "min_rating": min_rating,
+        "rating_level": get_rating_level(max_rating),
     }
 
 
@@ -419,10 +482,23 @@ if st.session_state.get("last_qp") != qp:
         st.session_state["nav_mode"] = "📊 Множество турниров"
         st.session_state["multi_statuses"] = ["Прошедшие", "Текущие", "Будущие"]
 
+    if qp.get("levels"):
+        parsed_levels = [
+            LEVEL_CODE_TO_LABEL[c.strip()]
+            for c in qp["levels"].split(",")
+            if c.strip() in LEVEL_CODE_TO_LABEL
+        ]
+        if parsed_levels:
+            st.session_state["multi_levels"] = parsed_levels
+    elif qp.get("view"):
+        st.session_state["multi_levels"] = list(ALL_LEVEL_LABELS)
+
 if "nav_mode" not in st.session_state:
     st.session_state["nav_mode"] = "📊 Множество турниров"
 if "multi_statuses" not in st.session_state:
     st.session_state["multi_statuses"] = ["Прошедшие", "Текущие", "Будущие"]
+if "multi_levels" not in st.session_state:
+    st.session_state["multi_levels"] = list(ALL_LEVEL_LABELS)
 
 # Боковая панель навигации
 with st.sidebar:
@@ -476,6 +552,7 @@ if mode == "🔍 Один турнир":
             format_func=lambda tid: (
                 f"{STATUS_LABELS.get(tourn_map[tid]['status'], '')} | "
                 f"{tourn_map[tid]['name']} ({tourn_map[tid]['format'].capitalize()}, "
+                f"{format_tournament_level(tourn_map[tid])}, "
                 f"{tourn_map[tid]['nb_players']} уч.)"
             ),
         )
@@ -486,11 +563,12 @@ if mode == "🔍 Один турнир":
 
     t_info = tourn_map[selected_id]
 
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Статус", STATUS_LABELS.get(t_info["status"], t_info["status"]))
     m2.metric("Формат", t_info["format"].capitalize())
-    m3.metric("Участников на Lichess", t_info["nb_players"])
-    m4.metric("Старт", ts_to_str(t_info.get("starts_at")))
+    m3.metric("Уровень", format_tournament_level(t_info))
+    m4.metric("Участников на Lichess", t_info["nb_players"])
+    m5.metric("Старт", ts_to_str(t_info.get("starts_at")))
 
     st.markdown(f"🔗 [Открыть турнир на Lichess.org]({t_info['url']})")
 
@@ -607,12 +685,22 @@ else:
     with col_f4:
         date_to = st.date_input("Прошедшие по дату", value=max(max_avail_date, date.today()))
 
+    selected_level_labels = st.multiselect(
+        "Уровень турнира (ограничение рейтинга на вход)",
+        options=ALL_LEVEL_LABELS,
+        key="multi_levels",
+        help="Строгое соответствие категории: например, «До 1500» показывает только турниры 1301–1500 (без турниров «До 1300»).",
+    )
+    selected_level_codes = {LEVEL_LABEL_TO_CODE[lbl] for lbl in selected_level_labels}
+
     # Фильтруем турниры
     filtered_tournaments = []
     for t in tournaments_list:
         if t.get("status") not in selected_statuses:
             continue
         if t.get("format") not in selected_formats:
+            continue
+        if (t.get("rating_level") or "other") not in selected_level_codes:
             continue
         if t.get("status") == "finished":
             t_date = ts_to_local_date(t.get("finishes_at") or t.get("starts_at"))
@@ -735,7 +823,8 @@ else:
                 players = cached_map.get(t["id"], [])
                 header_txt = (
                     f"{STATUS_LABELS.get(t['status'], '')} | {t['name']} "
-                    f"({t['format'].capitalize()}, {len(players)} уч., {ts_to_str(t.get('starts_at'))})"
+                    f"({t['format'].capitalize()}, {format_tournament_level(t)}, "
+                    f"{len(players)} уч., {ts_to_str(t.get('starts_at'))})"
                 )
                 with st.expander(header_txt, expanded=(i == 0)):
                     df_top5 = build_top5_registered_df(players)
@@ -759,6 +848,7 @@ else:
             t for t in tournaments_list
             if t.get("status") == "finished"
             and t.get("format") in selected_formats
+            and (t.get("rating_level") or "other") in selected_level_codes
             and t.get("nb_players", 0) > 0
             and (
                 (d := ts_to_local_date(t.get("finishes_at") or t.get("starts_at"))) is not None
@@ -769,7 +859,7 @@ else:
         if not finished_in_range:
             st.warning(
                 f"За период с {date_from.strftime('%d.%m.%Y')} по {date_to.strftime('%d.%m.%Y')} "
-                f"прошедших турниров в базе не найдено. "
+                f"прошедших турниров с выбранными форматом и уровнем не найдено. "
                 f"(Доступные даты в базе: с {min_avail_date.strftime('%d.%m.%Y')} по {max_avail_date.strftime('%d.%m.%Y')})"
             )
         else:
@@ -785,6 +875,7 @@ else:
                     top10_rows.append({
                         "Турнир": t["name"],
                         "Формат": t["format"],
+                        "Уровень": format_tournament_level(t),
                         "Дата": ts_to_str(t.get("finishes_at") or t.get("starts_at")),
                         "Место": p["rank"],
                         "Игрок": p["username"],
