@@ -22,8 +22,46 @@ mock_mongo_db = {}  # {tournament_id: tournament_dict}
 
 LICHESS_API_URL = "https://lichess.org/api/tournament"
 
+
+def extract_rating_value(val) -> int | None:
+    if isinstance(val, dict):
+        r = val.get("rating")
+        return int(r) if r is not None else None
+    if isinstance(val, (int, float)):
+        return int(val)
+    return None
+
+
+def extract_rating_limits(raw_tourn: dict) -> tuple[int | None, int | None]:
+    conditions = raw_tourn.get("conditions") or {}
+    max_rating = extract_rating_value(raw_tourn.get("maxRating"))
+    if max_rating is None:
+        max_rating = extract_rating_value(conditions.get("maxRating"))
+
+    min_rating = extract_rating_value(raw_tourn.get("minRating"))
+    if min_rating is None:
+        min_rating = extract_rating_value(conditions.get("minRating"))
+
+    return max_rating, min_rating
+
+
+def get_rating_level(max_rating: int | None) -> str:
+    if max_rating is None:
+        return "other"
+    if max_rating <= 1300:
+        return "u1300"
+    if max_rating <= 1500:
+        return "u1500"
+    if max_rating <= 1700:
+        return "u1700"
+    if max_rating <= 2000:
+        return "u2000"
+    return "other"
+
+
 def parse_and_normalize(raw_tourn: dict, status: str) -> dict:
     perf_info = raw_tourn.get("perf", {})
+    max_rating, min_rating = extract_rating_limits(raw_tourn)
     return {
         "id": raw_tourn.get("id"),
         "name": raw_tourn.get("fullName", "Без названия"),
@@ -34,7 +72,11 @@ def parse_and_normalize(raw_tourn: dict, status: str) -> dict:
         "finishes_at": raw_tourn.get("finishesAt"),
         "url": f"https://lichess.org/tournament/{raw_tourn.get('id')}",
         "clock": raw_tourn.get("clock", {}),
+        "max_rating": max_rating,
+        "min_rating": min_rating,
+        "rating_level": get_rating_level(max_rating),
     }
+
 
 def poller_worker():
     """Сборщик реальных данных с Lichess API."""
@@ -59,6 +101,7 @@ def poller_worker():
 
         time.sleep(30)
 
+
 def consumer_worker():
     """Обработчик очереди: сохраняет реальные турниры в базу."""
     print("[Consumer] Обработчик очереди запущен...")
@@ -68,9 +111,11 @@ def consumer_worker():
             mock_mongo_db[t["id"]] = t
         mock_redis_queue.task_done()
 
+
 # Запуск фоновых потоков
 threading.Thread(target=poller_worker, daemon=True).start()
 threading.Thread(target=consumer_worker, daemon=True).start()
+
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
@@ -80,10 +125,12 @@ async def index(request: Request):
         context={"tournaments": []}
     )
 
+
 @app.get("/api/tournaments")
 async def get_tournaments(
     status: str = Query("active_upcoming"),
-    date_from: str | None = Query(None)
+    date_from: str | None = Query(None),
+    levels: str | None = Query(None),
 ):
     selected_ts = 0
     if date_from:
@@ -93,11 +140,17 @@ async def get_tournaments(
         except ValueError:
             pass
 
+    allowed_levels = {lvl.strip() for lvl in levels.split(",") if lvl.strip()} if levels else None
+
     results = []
     # Выдаем только те турниры, которые РЕАЛЬНО есть в памяти
     for t in mock_mongo_db.values():
         t_status = t.get("status")
         t_finish = t.get("finishes_at") or t.get("starts_at") or 0
+        t_level = t.get("rating_level") or "other"
+
+        if allowed_levels is not None and t_level not in allowed_levels:
+            continue
 
         if status == "active_upcoming":
             if t_status in ("started", "created"):
@@ -115,6 +168,7 @@ async def get_tournaments(
     # Сортируем: сначала самые свежие (те, что начнутся/начались позже)
     results.sort(key=lambda x: x.get("starts_at") or 0, reverse=True)
     return {"tournaments": results}
+
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

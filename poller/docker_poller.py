@@ -27,8 +27,45 @@ def get_redis_client():
             time.sleep(3)
 
 
+def extract_rating_value(val) -> int | None:
+    if isinstance(val, dict):
+        r = val.get("rating")
+        return int(r) if r is not None else None
+    if isinstance(val, (int, float)):
+        return int(val)
+    return None
+
+
+def extract_rating_limits(raw_tourn: dict) -> tuple[int | None, int | None]:
+    conditions = raw_tourn.get("conditions") or {}
+    max_rating = extract_rating_value(raw_tourn.get("maxRating"))
+    if max_rating is None:
+        max_rating = extract_rating_value(conditions.get("maxRating"))
+
+    min_rating = extract_rating_value(raw_tourn.get("minRating"))
+    if min_rating is None:
+        min_rating = extract_rating_value(conditions.get("minRating"))
+
+    return max_rating, min_rating
+
+
+def get_rating_level(max_rating: int | None) -> str:
+    if max_rating is None:
+        return "other"
+    if max_rating <= 1300:
+        return "u1300"
+    if max_rating <= 1500:
+        return "u1500"
+    if max_rating <= 1700:
+        return "u1700"
+    if max_rating <= 2000:
+        return "u2000"
+    return "other"
+
+
 def parse_and_normalize(raw_tourn: dict, status: str) -> dict:
     perf_info = raw_tourn.get("perf", {})
+    max_rating, min_rating = extract_rating_limits(raw_tourn)
     return {
         "id": raw_tourn.get("id"),
         "name": raw_tourn.get("fullName", "Без названия"),
@@ -39,6 +76,9 @@ def parse_and_normalize(raw_tourn: dict, status: str) -> dict:
         "finishes_at": raw_tourn.get("finishesAt"),
         "url": f"https://lichess.org/tournament/{raw_tourn.get('id')}",
         "clock": raw_tourn.get("clock", {}),
+        "max_rating": max_rating,
+        "min_rating": min_rating,
+        "rating_level": get_rating_level(max_rating),
     }
 
 
